@@ -1,7 +1,9 @@
 # pylint: disable=redefined-outer-name
 
 import logging
+import os
 import sqlite3
+import sys
 from typing import List, Optional, Tuple
 
 import streamlit as st
@@ -12,6 +14,12 @@ from langchain.schema.output_parser import StrOutputParser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+OLLAMA_URL = os.environ.get("OLLAMA_URL")
+
+if not OLLAMA_URL:
+    raise Exception("OLLAMA_URL not found")
+
 
 DB_NAME = "tasks.db"
 
@@ -80,7 +88,7 @@ def summarize_tasks(
         """
     )
 
-    llm_model = ChatOllama(model="deepseek-r1:1.5b")
+    llm_model = ChatOllama(model="deepseek-r1:1.5b", base_url=OLLAMA_URL)
     task_texts = [
         f"Task: {t[1]}, Description: {t[2]}, Project: {t[4]}, Developer: {t[3]}, Task Date: {t[6]},"
         for t in tasks
