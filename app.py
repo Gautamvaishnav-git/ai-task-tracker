@@ -3,7 +3,6 @@
 import logging
 import os
 import sqlite3
-import sys
 from typing import List, Optional, Tuple
 
 import streamlit as st
@@ -11,6 +10,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
+
+from src.daily_activity import routine_tracker
+from template import template
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,24 +75,11 @@ def summarize_tasks(
     if not tasks:
         return "No tasks available."
 
-    prompt_template = ChatPromptTemplate.from_template(
-        """
-        You are an expert Project Scrum Master. Your task is to summarize all user task items and present them in a table.
-
-        ### Requirements:
-        - The summary must be **professional and well-organized**.
-        - The table must include the following mandatory columns: **Task Date, Task, Summary and Project**.
-        - If multiple tasks exist for the same date, **group them into a single row** instead of creating multiple rows for the same day.
-        - You may include additional fields if relevant.
-
-        Context:
-        {tasks}
-        """
-    )
+    prompt_template = ChatPromptTemplate.from_template(template=template)
 
     llm_model = ChatOllama(model="deepseek-r1:1.5b", base_url=OLLAMA_URL)
     task_texts = [
-        f"Task: {t[1]}, Description: {t[2]}, Project: {t[4]}, Developer: {t[3]}, Task Date: {t[6]},"
+        f"Task: {t[1]} || Description: {t[2]} || Project: {t[4]} || Developer: {t[3]} || Task Date: {t[6]};"
         for t in tasks
     ]
     chain = RunnablePassthrough() | prompt_template | llm_model | StrOutputParser()
@@ -98,14 +87,14 @@ def summarize_tasks(
     return chain.invoke({"tasks": task_texts})
 
 
-def update_task(task_id, title, description, developer, project):
+def update_task(task_id, title, description, developer, project, task_date):
     with sqlite3.connect(DB_NAME) as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            UPDATE tasks SET title = ?, description = ?, developer = ?, project = ? WHERE id = ?
+            UPDATE tasks SET title = ?, description = ?, developer = ?, project = ?, task_date = ? WHERE id = ?
         """,
-            (title, description, developer, project, task_id),
+            (title, description, developer, project, task_date, task_id),
         )
 
 
@@ -126,12 +115,16 @@ st.title("AI Task Tracker")
 
 
 col1, col2 = st.sidebar.columns(2)  # Create two equal-width columns
+col3, col4 = st.sidebar.columns(2)
 
 with col1:
     st.button("🏠 Home", on_click=set_page, args=("add_task",))
 
 with col2:
     st.button("📝 Edit Task", on_click=set_page, args=("edit",))
+
+with col3:
+    st.button("🎯 Routine", on_click=set_page, args=("routine_tracker",))
 
 # Initialize database on first run
 init_db()
@@ -154,10 +147,16 @@ if st.session_state.page == "edit":
             new_description = st.text_area("Description", selected_task[2])
             new_developer = st.text_input("Developer", selected_task[3])
             new_project = st.text_input("Project", selected_task[4])
+            task_date = st.date_input("Task Date", selected_task[6])
 
             if st.button("Update Task"):
                 update_task(
-                    task_id, new_title, new_description, new_developer, new_project
+                    task_id,
+                    new_title,
+                    new_description,
+                    new_developer,
+                    new_project,
+                    task_date,
                 )
                 st.success("Task updated successfully!")
                 st.rerun()
@@ -200,7 +199,8 @@ elif st.session_state.page == "add_task":
             summary = summarize_tasks(tasks)
 
         st.write(summary)
-
+elif st.session_state.page == "routine_tracker":
+    routine_tracker()
 
 else:
     st.title("404 - Page Not Found")
